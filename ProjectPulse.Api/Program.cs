@@ -1,43 +1,21 @@
-using Microsoft.EntityFrameworkCore;
-using ProjectPulse.Api.Persistence;
-using Microsoft.OpenApi.Models;
 using FluentValidation;
 using FluentValidation.AspNetCore;
-using ProjectPulse.Api.DTOs;
-using Microsoft.AspNetCore.Mvc;
-using System.Reflection;
-using ProjectPulse.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using ProjectPulse.Api.DTOs;
+using ProjectPulse.Api.Persistence;
+using ProjectPulse.Api.Services;
 using System.Text;
-
-
-
 
 var builder = WebApplication.CreateBuilder(args);
 
-
-
+// Controllers and validation
 builder.Services.AddControllers();
 builder.Services.AddFluentValidationAutoValidation();
-builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
-// Opciones para JWT leídas de appsettings.Development.json ("Jwt")
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
-
-// Servicios propios
-builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
-builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-
-
-// Descubre validadores buscando en el ensamblado del DTO
-builder.Services.AddValidatorsFromAssemblyContaining<ProjectCreateDto>();
-
-// Controllers
-builder.Services.AddControllers();
-builder.Services.AddFluentValidationAutoValidation(); // activa el filtro automático 400
-builder.Services.AddValidatorsFromAssemblyContaining<ProjectCreateDtoValidator>(); //validadores
-
-
+builder.Services.AddValidatorsFromAssemblyContaining<ProjectCreateDtoValidator>();
 builder.Services.Configure<ApiBehaviorOptions>(o =>
 {
     o.InvalidModelStateResponseFactory = ctx =>
@@ -51,6 +29,10 @@ builder.Services.Configure<ApiBehaviorOptions>(o =>
     };
 });
 
+// Application services
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
+builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 
 // Swagger / OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -71,14 +53,14 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Auth: JWT Bearer
+// Authentication
 var jwt = builder.Configuration.GetSection("Jwt");
 var key = Encoding.UTF8.GetBytes(jwt["Key"]!);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
-        o.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+        o.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
@@ -89,7 +71,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-
+// CORS
 builder.Services.AddCors(o =>
 {
     o.AddPolicy("frontend", p =>
@@ -98,7 +80,7 @@ builder.Services.AddCors(o =>
          .AllowAnyMethod());
 });
 
-// --- Connection string robusta con fallback y log ---
+// Persistence
 var connStr = builder.Configuration.GetConnectionString("Default");
 
 // Fallback si viene vacía (Docker o entorno que no cargó appsettings)
@@ -121,33 +103,10 @@ builder.Services.AddSingleton(new { ConnectionStringInUse = connStr });
 
 // Registra DbContext con la cadena final
 builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(connStr));
+
 var app = builder.Build();
 
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/error");   // prod
-}
-else
-{
-    app.UseDeveloperExceptionPage();     // dev
-}
-
-// Punto central de errores → /error
-app.Map("/error", (HttpContext ctx) =>
-{
-    // ASP.NET generará automáticamente un ProblemDetails 500 aquí
-    return Results.Problem(title: "Unexpected error", statusCode: StatusCodes.Status500InternalServerError);
-});
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "ProjectPulse API v1");
-    });
-}
-
+// Database initialization
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -156,7 +115,21 @@ using (var scope = app.Services.CreateScope())
     await db.EnsureSeededAsync(hasher, logger);
 }
 
-// Swagger habilitado también si se pasa EnableSwagger=true por entorno
+// HTTP pipeline
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseExceptionHandler("/error");
+}
+
+app.UseHttpsRedirection();
+app.UseCors("frontend");
+app.UseAuthentication();
+app.UseAuthorization();
+
 var enableSwagger = app.Environment.IsDevelopment()
                     || builder.Configuration.GetValue<bool>("EnableSwagger");
 
@@ -166,13 +139,13 @@ if (enableSwagger)
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "ProjectPulse API v1");
-        c.RoutePrefix = "swagger"; // mantiene la ruta /swagger/index.html
+        c.RoutePrefix = "swagger";
     });
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
-app.UseHttpsRedirection();
-app.UseCors("frontend");
+// Endpoints
+app.Map("/error", (HttpContext _) =>
+    Results.Problem(title: "Unexpected error", statusCode: StatusCodes.Status500InternalServerError));
 app.MapControllers();
+
 app.Run();
