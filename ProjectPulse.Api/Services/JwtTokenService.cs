@@ -21,6 +21,7 @@ public interface IJwtTokenService
 {
     string CreateAccessToken(User user);
     string CreateRefreshToken();
+    string HashRefreshToken(string refreshToken);
     DateTime GetRefreshExpiry();
 }
 
@@ -63,6 +64,12 @@ public class JwtTokenService : IJwtTokenService
         Span<byte> buf = stackalloc byte[32];
         RandomNumberGenerator.Fill(buf);
         return Convert.ToBase64String(buf);
+    }
+
+    public string HashRefreshToken(string refreshToken)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(refreshToken));
+        return Convert.ToHexString(hash);
     }
 
     public DateTime GetRefreshExpiry() => DateTime.UtcNow.AddDays(_opt.RefreshTokenDays);

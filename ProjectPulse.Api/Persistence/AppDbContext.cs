@@ -39,10 +39,12 @@ public class AppDbContext : DbContext
             .WithMany(u => u.RefreshTokens)
             .HasForeignKey(rt => rt.UserId);
 
-        // Opcional: longitud razonable para el token (Base64 ~44 chars)
         b.Entity<RefreshToken>()
-            .Property(rt => rt.Token)
-            .HasMaxLength(100)
+            .HasIndex(rt => rt.TokenHash)
+            .IsUnique();
+        b.Entity<RefreshToken>()
+            .Property(rt => rt.TokenHash)
+            .HasMaxLength(64)
             .IsRequired();
     }
 }
