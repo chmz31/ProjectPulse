@@ -16,6 +16,12 @@ public class AppDbContext : DbContext
     {
         // Project
         b.Entity<Project>().HasKey(p => p.Id);
+        b.Entity<Project>()
+            .HasIndex(p => p.OwnerId);
+        b.Entity<Project>()
+            .HasOne(p => p.Owner)
+            .WithMany(u => u.Projects)
+            .HasForeignKey(p => p.OwnerId);
 
         // User
         b.Entity<User>()

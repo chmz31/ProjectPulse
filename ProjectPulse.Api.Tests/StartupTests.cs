@@ -2,7 +2,8 @@ using Xunit;
 
 namespace ProjectPulse.Api.Tests;
 
-public sealed class StartupTests : IClassFixture<CustomWebApplicationFactory>
+[Collection(ApiIntegrationTestCollection.Name)]
+public sealed class StartupTests
 {
     private readonly CustomWebApplicationFactory _factory;
 

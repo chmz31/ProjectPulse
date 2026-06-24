@@ -1,8 +1,15 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Xunit;
 
 namespace ProjectPulse.Api.Tests;
+
+[CollectionDefinition(Name)]
+public sealed class ApiIntegrationTestCollection : ICollectionFixture<CustomWebApplicationFactory>
+{
+    public const string Name = "API integration";
+}
 
 public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
