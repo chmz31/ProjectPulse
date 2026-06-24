@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using ProjectPulse.Api.DTOs;
 using ProjectPulse.Api.Persistence;
@@ -30,7 +31,13 @@ builder.Services.Configure<ApiBehaviorOptions>(o =>
 });
 
 // Application services
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection("Jwt"))
+    .Validate(o => !string.IsNullOrWhiteSpace(o.Issuer), "Jwt:Issuer is required.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.Audience), "Jwt:Audience is required.")
+    .Validate(o => IsSafeJwtKey(o.Key),
+        "Jwt:Key must be at least 32 UTF-8 bytes and must not be a placeholder or known demo key.")
+    .ValidateOnStart();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 
@@ -54,20 +61,20 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // Authentication
-var jwt = builder.Configuration.GetSection("Jwt");
-var key = Encoding.UTF8.GetBytes(jwt["Key"]!);
-
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(o =>
+    .AddJwtBearer();
+builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtOptions>>((o, jwtOptions) =>
     {
+        var jwt = jwtOptions.Value;
         o.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = jwt["Issuer"],
-            ValidAudience = jwt["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(key)
+            ValidIssuer = jwt.Issuer,
+            ValidAudience = jwt.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key))
         };
     });
 
@@ -83,17 +90,16 @@ builder.Services.AddCors(o =>
 // Persistence
 var connStr = builder.Configuration.GetConnectionString("Default");
 
-// Fallback si viene vacía (Docker o entorno que no cargó appsettings)
 if (string.IsNullOrWhiteSpace(connStr))
 {
-    // Intenta leer desde variable de entorno explícita
-    connStr = Environment.GetEnvironmentVariable("ConnectionStrings__Default");
-
-    if (string.IsNullOrWhiteSpace(connStr))
+    if (!builder.Environment.IsDevelopment())
     {
-        // Último recurso: usa SQLite local por defecto
-        connStr = "Data Source=projectpulse.db";
+        throw new InvalidOperationException(
+            "ConnectionStrings:Default is required outside the Development environment.");
     }
+
+    // Explicit development-only fallback for local SQLite use.
+    connStr = "Data Source=projectpulse.db";
 }
 
 // Log seguro para ver qué se está usando en contenedor
@@ -105,6 +111,9 @@ builder.Services.AddSingleton(new { ConnectionStringInUse = connStr });
 builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(connStr));
 
 var app = builder.Build();
+
+// Resolve validated options before startup tasks that can cause side effects.
+_ = app.Services.GetRequiredService<IOptions<JwtOptions>>().Value;
 
 // Database initialization
 using (var scope = app.Services.CreateScope())
@@ -149,3 +158,19 @@ app.Map("/error", (HttpContext _) =>
 app.MapControllers();
 
 app.Run();
+
+static bool IsSafeJwtKey(string? key)
+{
+    if (string.IsNullOrWhiteSpace(key) || Encoding.UTF8.GetByteCount(key) < 32)
+    {
+        return false;
+    }
+
+    var value = key.Trim();
+    if (value.StartsWith('<') && value.EndsWith('>'))
+    {
+        return false;
+    }
+
+    return !value.Equals("dev-super-secret-key-change-me-please-32chars-min", StringComparison.OrdinalIgnoreCase);
+}
