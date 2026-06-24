@@ -27,14 +27,16 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<ActionResult<MeDto>> Register([FromBody] RegisterDto dto)
     {
+        var email = NormalizeEmail(dto.Email);
+
         // 1) email único
-        var exists = await _db.Users.AnyAsync(u => u.Email == dto.Email);
+        var exists = await _db.Users.AnyAsync(u => u.Email == email);
         if (exists) return Conflict(new { message = "Email already in use." });
 
         // 2) crear usuario con contraseña hasheada
         var user = new User
         {
-            Email = dto.Email.Trim().ToLowerInvariant(),
+            Email = email,
             DisplayName = dto.DisplayName,
             PasswordHash = _hasher.Hash(dto.Password),
             Role = GlobalRole.Member
@@ -52,7 +54,8 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<TokenResponseDto>> Login([FromBody] LoginDto dto)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+        var email = NormalizeEmail(dto.Email);
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
         if (user is null) return Unauthorized();
         if (!_hasher.Verify(dto.Password, user.PasswordHash)) return Unauthorized();
 
@@ -139,10 +142,12 @@ public async Task<IActionResult> Logout([FromBody] RefreshRequestDto dto)
     return NoContent();
 }
 
-private Task RevokeActiveRefreshTokensAsync(Guid userId, DateTime revokedAt)
+    private Task RevokeActiveRefreshTokensAsync(Guid userId, DateTime revokedAt)
 {
     return _db.RefreshTokens
         .Where(r => r.UserId == userId && r.RevokedAt == null)
-        .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.RevokedAt, revokedAt));
-}
+            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.RevokedAt, revokedAt));
+    }
+
+    private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 }
