@@ -42,6 +42,7 @@ SQLite keeps local setup simple and makes the repository easy to evaluate. It is
 - Critical configuration is validated before migrations or seed operations can modify the database.
 - Raw refresh tokens are returned to clients but never stored; only their SHA-256 hashes are persisted.
 - Refresh tokens are one-time credentials. Rotation revokes the old token, and reuse is rejected.
+- Sensitive authentication endpoints use per-client fixed-window rate limiting.
 - Project ownership comes from the authenticated JWT subject, never from client input.
 - Cross-user project lookups return `404 Not Found` to avoid revealing resource existence.
 

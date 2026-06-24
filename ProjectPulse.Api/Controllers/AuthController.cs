@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ProjectPulse.Api.DTOs;
 using ProjectPulse.Api.Domain;
 using ProjectPulse.Api.Persistence;
+using ProjectPulse.Api.Security;
 using ProjectPulse.Api.Services;
 
 namespace ProjectPulse.Api.Controllers;
@@ -21,6 +23,7 @@ public class AuthController : ControllerBase
     }
 
     // POST /auth/register
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     [HttpPost("register")]
     public async Task<ActionResult<MeDto>> Register([FromBody] RegisterDto dto)
     {
@@ -45,77 +48,79 @@ public class AuthController : ControllerBase
             new MeDto(user.Id, user.Email, user.DisplayName, user.Role.ToString()));
     }
 
-   [HttpPost("login")]
-public async Task<ActionResult<TokenResponseDto>> Login([FromBody] LoginDto dto)
-{
-    var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
-    if (user is null) return Unauthorized();
-    if (!_hasher.Verify(dto.Password, user.PasswordHash)) return Unauthorized();
-
-    var access = _tokens.CreateAccessToken(user);
-    var refresh = _tokens.CreateRefreshToken();
-
-    // INSERT explícito (evita el estado Modified por navegación)
-    _db.RefreshTokens.Add(new RefreshToken
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    [HttpPost("login")]
+    public async Task<ActionResult<TokenResponseDto>> Login([FromBody] LoginDto dto)
     {
-        UserId = user.Id,
-        TokenHash = _tokens.HashRefreshToken(refresh),
-        ExpiresAt = _tokens.GetRefreshExpiry()
-    });
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+        if (user is null) return Unauthorized();
+        if (!_hasher.Verify(dto.Password, user.PasswordHash)) return Unauthorized();
 
-    await _db.SaveChangesAsync();
+        var access = _tokens.CreateAccessToken(user);
+        var refresh = _tokens.CreateRefreshToken();
 
-    return new TokenResponseDto(access, refresh);
-}
+        // INSERT explícito (evita el estado Modified por navegación)
+        _db.RefreshTokens.Add(new RefreshToken
+        {
+            UserId = user.Id,
+            TokenHash = _tokens.HashRefreshToken(refresh),
+            ExpiresAt = _tokens.GetRefreshExpiry()
+        });
+
+        await _db.SaveChangesAsync();
+
+        return new TokenResponseDto(access, refresh);
+    }
 
     // renueva access y rota el refresh token
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     [HttpPost("refresh")]
-public async Task<ActionResult<TokenResponseDto>> Refresh([FromBody] RefreshRequestDto dto)
-{
-    if (string.IsNullOrWhiteSpace(dto.RefreshToken)) return Unauthorized();
-
-    var tokenHash = _tokens.HashRefreshToken(dto.RefreshToken);
-    var token = await _db.RefreshTokens
-        .Include(r => r.User)
-        .FirstOrDefaultAsync(r => r.TokenHash == tokenHash);
-
-    if (token is null) return Unauthorized();
-
-    var now = DateTime.UtcNow;
-    if (token.RevokedAt is not null)
+    public async Task<ActionResult<TokenResponseDto>> Refresh([FromBody] RefreshRequestDto dto)
     {
-        await RevokeActiveRefreshTokensAsync(token.UserId, now);
-        return Unauthorized();
+        if (string.IsNullOrWhiteSpace(dto.RefreshToken)) return Unauthorized();
+
+        var tokenHash = _tokens.HashRefreshToken(dto.RefreshToken);
+        var token = await _db.RefreshTokens
+            .Include(r => r.User)
+            .FirstOrDefaultAsync(r => r.TokenHash == tokenHash);
+
+        if (token is null) return Unauthorized();
+
+        var now = DateTime.UtcNow;
+        if (token.RevokedAt is not null)
+        {
+            await RevokeActiveRefreshTokensAsync(token.UserId, now);
+            return Unauthorized();
+        }
+
+        if (token.ExpiresAt <= now) return Unauthorized();
+
+        var rotated = await _db.RefreshTokens
+            .Where(r => r.Id == token.Id && r.RevokedAt == null && r.ExpiresAt > now)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.RevokedAt, now));
+
+        if (rotated != 1)
+        {
+            await RevokeActiveRefreshTokensAsync(token.UserId, now);
+            return Unauthorized();
+        }
+
+        var user = token.User;
+        var access = _tokens.CreateAccessToken(user);
+        var newRefresh = _tokens.CreateRefreshToken();
+
+        // nuevo refresh: INSERT explícito
+        _db.RefreshTokens.Add(new RefreshToken
+        {
+            UserId = user.Id,
+            TokenHash = _tokens.HashRefreshToken(newRefresh),
+            ExpiresAt = _tokens.GetRefreshExpiry()
+        });
+
+        await _db.SaveChangesAsync();
+
+        return new TokenResponseDto(access, newRefresh);
     }
-
-    if (token.ExpiresAt <= now) return Unauthorized();
-
-    var rotated = await _db.RefreshTokens
-        .Where(r => r.Id == token.Id && r.RevokedAt == null && r.ExpiresAt > now)
-        .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.RevokedAt, now));
-
-    if (rotated != 1)
-    {
-        await RevokeActiveRefreshTokensAsync(token.UserId, now);
-        return Unauthorized();
-    }
-
-    var user = token.User;
-    var access = _tokens.CreateAccessToken(user);
-    var newRefresh = _tokens.CreateRefreshToken();
-
-    // nuevo refresh: INSERT explícito
-    _db.RefreshTokens.Add(new RefreshToken
-    {
-        UserId = user.Id,
-        TokenHash = _tokens.HashRefreshToken(newRefresh),
-        ExpiresAt = _tokens.GetRefreshExpiry()
-    });
-
-    await _db.SaveChangesAsync();
-
-    return new TokenResponseDto(access, newRefresh);
-}
     // logout: revoca un refresh token concreto
     [HttpPost("logout")]
 public async Task<IActionResult> Logout([FromBody] RefreshRequestDto dto)
