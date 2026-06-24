@@ -1,0 +1,114 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ProjectPulse.Api.DTOs;
+using ProjectPulse.Api.Domain;
+using ProjectPulse.Api.Persistence;
+using ProjectPulse.Api.Services;
+
+namespace ProjectPulse.Api.Controllers;
+
+[ApiController]
+[Route("auth")]
+public class AuthController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly IPasswordHasher _hasher;
+    private readonly IJwtTokenService _tokens;
+
+    public AuthController(AppDbContext db, IPasswordHasher hasher, IJwtTokenService tokens)
+    {
+        _db = db; _hasher = hasher; _tokens = tokens;
+    }
+
+    // POST /auth/register
+    [HttpPost("register")]
+    public async Task<ActionResult<MeDto>> Register([FromBody] RegisterDto dto)
+    {
+        // 1) email único
+        var exists = await _db.Users.AnyAsync(u => u.Email == dto.Email);
+        if (exists) return Conflict(new { message = "Email already in use." });
+
+        // 2) crear usuario con contraseña hasheada
+        var user = new User
+        {
+            Email = dto.Email.Trim().ToLowerInvariant(),
+            DisplayName = dto.DisplayName,
+            PasswordHash = _hasher.Hash(dto.Password),
+            Role = GlobalRole.Member
+        };
+
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        // 3) devolvemos datos públicos del usuario creado
+        return CreatedAtAction(nameof(Register), new { id = user.Id },
+            new MeDto(user.Id, user.Email, user.DisplayName, user.Role.ToString()));
+    }
+
+   [HttpPost("login")]
+public async Task<ActionResult<TokenResponseDto>> Login([FromBody] LoginDto dto)
+{
+    var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+    if (user is null) return Unauthorized();
+    if (!_hasher.Verify(dto.Password, user.PasswordHash)) return Unauthorized();
+
+    var access = _tokens.CreateAccessToken(user);
+    var refresh = _tokens.CreateRefreshToken();
+
+    // INSERT explícito (evita el estado Modified por navegación)
+    _db.RefreshTokens.Add(new RefreshToken
+    {
+        UserId = user.Id,
+        Token = refresh,
+        ExpiresAt = _tokens.GetRefreshExpiry()
+    });
+
+    await _db.SaveChangesAsync();
+
+    return new TokenResponseDto(access, refresh);
+}
+
+    // renueva access y rota el refresh token
+    [HttpPost("refresh")]
+public async Task<ActionResult<TokenResponseDto>> Refresh([FromBody] RefreshRequestDto dto)
+{
+    var token = await _db.RefreshTokens
+        .Include(r => r.User)
+        .FirstOrDefaultAsync(r => r.Token == dto.RefreshToken && r.RevokedAt == null);
+
+    if (token is null || token.ExpiresAt <= DateTime.UtcNow) return Unauthorized();
+
+    // revoca el usado
+    token.RevokedAt = DateTime.UtcNow;
+
+    var user = token.User;
+    var access = _tokens.CreateAccessToken(user);
+    var newRefresh = _tokens.CreateRefreshToken();
+
+    // nuevo refresh: INSERT explícito
+    _db.RefreshTokens.Add(new RefreshToken
+    {
+        UserId = user.Id,
+        Token = newRefresh,
+        ExpiresAt = _tokens.GetRefreshExpiry()
+    });
+
+    await _db.SaveChangesAsync();
+
+    return new TokenResponseDto(access, newRefresh);
+}
+    // logout: revoca un refresh token concreto
+    [HttpPost("logout")]
+public async Task<IActionResult> Logout([FromBody] RefreshRequestDto dto)
+{
+    var token = await _db.RefreshTokens
+        .FirstOrDefaultAsync(r => r.Token == dto.RefreshToken && r.RevokedAt == null);
+
+    if (token is null) return NoContent();
+
+    token.RevokedAt = DateTime.UtcNow;
+    await _db.SaveChangesAsync();
+
+    return NoContent();
+}
+}

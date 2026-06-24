@@ -1,0 +1,31 @@
+@email = <user-email>
+@password = <strong-password>
+@displayName = <display-name>
+@accessToken = <access-token>
+
+### Register
+POST http://localhost:5241/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "displayName": "{{displayName}}"
+}
+
+### Login
+POST http://localhost:5241/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Me
+GET http://localhost:5241/users/me
+Authorization: Bearer {{accessToken}}
+
+### List projects
+GET http://localhost:5241/projects
+Authorization: Bearer {{accessToken}}
