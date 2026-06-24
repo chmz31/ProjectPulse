@@ -8,8 +8,8 @@ public class RefreshToken
     public Guid UserId { get; set; }
     public User User { get; set; } = default!;
 
-    // El valor del token (cadena aleatoria, no JWT)
-    public string Token { get; set; } = default!;
+    // SHA-256 del token opaco entregado al cliente
+    public string TokenHash { get; set; } = default!;
 
     // Gestión del ciclo de vida
     public DateTime ExpiresAt { get; set; }     // cuándo expira

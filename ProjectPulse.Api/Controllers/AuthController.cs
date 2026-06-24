@@ -59,7 +59,7 @@ public async Task<ActionResult<TokenResponseDto>> Login([FromBody] LoginDto dto)
     _db.RefreshTokens.Add(new RefreshToken
     {
         UserId = user.Id,
-        Token = refresh,
+        TokenHash = _tokens.HashRefreshToken(refresh),
         ExpiresAt = _tokens.GetRefreshExpiry()
     });
 
@@ -72,14 +72,33 @@ public async Task<ActionResult<TokenResponseDto>> Login([FromBody] LoginDto dto)
     [HttpPost("refresh")]
 public async Task<ActionResult<TokenResponseDto>> Refresh([FromBody] RefreshRequestDto dto)
 {
+    if (string.IsNullOrWhiteSpace(dto.RefreshToken)) return Unauthorized();
+
+    var tokenHash = _tokens.HashRefreshToken(dto.RefreshToken);
     var token = await _db.RefreshTokens
         .Include(r => r.User)
-        .FirstOrDefaultAsync(r => r.Token == dto.RefreshToken && r.RevokedAt == null);
+        .FirstOrDefaultAsync(r => r.TokenHash == tokenHash);
 
-    if (token is null || token.ExpiresAt <= DateTime.UtcNow) return Unauthorized();
+    if (token is null) return Unauthorized();
 
-    // revoca el usado
-    token.RevokedAt = DateTime.UtcNow;
+    var now = DateTime.UtcNow;
+    if (token.RevokedAt is not null)
+    {
+        await RevokeActiveRefreshTokensAsync(token.UserId, now);
+        return Unauthorized();
+    }
+
+    if (token.ExpiresAt <= now) return Unauthorized();
+
+    var rotated = await _db.RefreshTokens
+        .Where(r => r.Id == token.Id && r.RevokedAt == null && r.ExpiresAt > now)
+        .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.RevokedAt, now));
+
+    if (rotated != 1)
+    {
+        await RevokeActiveRefreshTokensAsync(token.UserId, now);
+        return Unauthorized();
+    }
 
     var user = token.User;
     var access = _tokens.CreateAccessToken(user);
@@ -89,7 +108,7 @@ public async Task<ActionResult<TokenResponseDto>> Refresh([FromBody] RefreshRequ
     _db.RefreshTokens.Add(new RefreshToken
     {
         UserId = user.Id,
-        Token = newRefresh,
+        TokenHash = _tokens.HashRefreshToken(newRefresh),
         ExpiresAt = _tokens.GetRefreshExpiry()
     });
 
@@ -101,8 +120,11 @@ public async Task<ActionResult<TokenResponseDto>> Refresh([FromBody] RefreshRequ
     [HttpPost("logout")]
 public async Task<IActionResult> Logout([FromBody] RefreshRequestDto dto)
 {
+    if (string.IsNullOrWhiteSpace(dto.RefreshToken)) return NoContent();
+
+    var tokenHash = _tokens.HashRefreshToken(dto.RefreshToken);
     var token = await _db.RefreshTokens
-        .FirstOrDefaultAsync(r => r.Token == dto.RefreshToken && r.RevokedAt == null);
+        .FirstOrDefaultAsync(r => r.TokenHash == tokenHash && r.RevokedAt == null);
 
     if (token is null) return NoContent();
 
@@ -110,5 +132,12 @@ public async Task<IActionResult> Logout([FromBody] RefreshRequestDto dto)
     await _db.SaveChangesAsync();
 
     return NoContent();
+}
+
+private Task RevokeActiveRefreshTokensAsync(Guid userId, DateTime revokedAt)
+{
+    return _db.RefreshTokens
+        .Where(r => r.UserId == userId && r.RevokedAt == null)
+        .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.RevokedAt, revokedAt));
 }
 }
