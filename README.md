@@ -239,7 +239,7 @@ ProjectPulse/
 - Projects have a single owner; collaboration and project-specific roles are not implemented.
 - Refresh-token state is database-backed and designed for this single-service scope.
 - Test coverage is intentionally focused rather than exhaustive.
-- Docker/container setup needs a future pass before being presented as a polished deployment path.
+- Docker support is suitable for local/demo evaluation; production deployment would require additional infrastructure hardening.
 
 Possible next steps include broader validation/error-path tests, structured observability, PostgreSQL deployment support, and collaborative project membership.
 
