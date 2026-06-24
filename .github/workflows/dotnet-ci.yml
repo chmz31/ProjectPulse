@@ -1,0 +1,31 @@
+name: .NET CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.422
+
+      - name: Restore dependencies
+        run: dotnet restore --locked-mode
+
+      - name: Build API
+        run: dotnet build ./ProjectPulse.Api/ProjectPulse.Api.csproj --configuration Release --no-restore
