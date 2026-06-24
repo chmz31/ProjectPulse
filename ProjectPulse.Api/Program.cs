@@ -174,3 +174,5 @@ static bool IsSafeJwtKey(string? key)
 
     return !value.Equals("dev-super-secret-key-change-me-please-32chars-min", StringComparison.OrdinalIgnoreCase);
 }
+
+public partial class Program { }

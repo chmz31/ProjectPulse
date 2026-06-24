@@ -29,3 +29,6 @@ jobs:
 
       - name: Build API
         run: dotnet build ./ProjectPulse.Api/ProjectPulse.Api.csproj --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test --configuration Release --no-restore
