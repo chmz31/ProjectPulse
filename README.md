@@ -115,6 +115,55 @@ Jwt__Key=<random-secret-at-least-32-bytes>
 ConnectionStrings__Default=Data Source=<database-path>
 ```
 
+## Docker
+
+The image uses a locked multi-stage .NET 8 build and runs the published API as a non-root user. Build it from the repository root so `global.json` and NuGet lock files are available:
+
+```bash
+docker build -t projectpulse-api -f ProjectPulse.Api/Dockerfile .
+```
+
+Generate a signing key in the host shell before starting a container.
+
+PowerShell:
+
+```powershell
+$env:PROJECTPULSE_JWT_KEY = [Convert]::ToBase64String(
+  [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+)
+$env:PROJECTPULSE_CONNECTION_STRING = "Data Source=/data/projectpulse.db"
+```
+
+Bash:
+
+```bash
+export PROJECTPULSE_JWT_KEY="$(openssl rand -base64 32)"
+export PROJECTPULSE_CONNECTION_STRING="Data Source=/data/projectpulse.db"
+```
+
+Run the image with configuration supplied through environment variables and a named volume mounted at `/data`:
+
+```bash
+docker run --rm --name projectpulse-api -p 8080:8080 \
+  -e Jwt__Issuer=ProjectPulse \
+  -e Jwt__Audience=ProjectPulse \
+  -e Jwt__Key="$PROJECTPULSE_JWT_KEY" \
+  -e "ConnectionStrings__Default=Data Source=/data/projectpulse.db" \
+  -e EnableSwagger=true \
+  -v projectpulse-data:/data \
+  projectpulse-api
+```
+
+Alternatively, Compose uses the same host signing-key variable:
+
+```bash
+docker compose up --build
+```
+
+The API is then available on `http://localhost:8080`; `/hello` is an unauthenticated smoke-check endpoint and Swagger is at `/swagger/index.html` for this local Compose configuration.
+
+The SQLite database is stored at `/data/projectpulse.db`. Mount `/data` to retain it when containers are replaced. This container setup is intended for local/demo evaluation; SQLite and automatic startup migrations are not designed here for horizontally scaled deployment.
+
 ## Database migrations
 
 The application currently applies pending EF Core migrations during startup. For manual migration management, install the matching CLI tool if needed and run:

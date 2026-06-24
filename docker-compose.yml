@@ -1,0 +1,20 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: ProjectPulse.Api/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      DOTNET_ENVIRONMENT: Production
+      Jwt__Issuer: "${PROJECTPULSE_JWT_ISSUER:-ProjectPulse}"
+      Jwt__Audience: "${PROJECTPULSE_JWT_AUDIENCE:-ProjectPulse}"
+      Jwt__Key: "${PROJECTPULSE_JWT_KEY:?Set PROJECTPULSE_JWT_KEY to a random value of at least 32 bytes}"
+      ConnectionStrings__Default: "${PROJECTPULSE_CONNECTION_STRING:?Set PROJECTPULSE_CONNECTION_STRING to Data Source=/data/projectpulse.db}"
+      EnableSwagger: "true"
+    volumes:
+      - projectpulse-data:/data
+
+volumes:
+  projectpulse-data:
