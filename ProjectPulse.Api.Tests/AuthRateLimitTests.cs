@@ -5,6 +5,7 @@ using Xunit;
 
 namespace ProjectPulse.Api.Tests;
 
+[Collection(ApiIntegrationTestCollection.Name)]
 public sealed class AuthRateLimitTests
 {
     [Fact]
