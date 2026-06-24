@@ -33,8 +33,8 @@ public static class DbSeeder
             db.Users.Add(admin);
 
             db.Projects.AddRange(
-                new Project { Name = "ProjectPulse", Description = "Demo seed" },
-                new Project { Name = "Onboarding", Description = "Sample project" }
+                new Project { Name = "ProjectPulse", Description = "Demo seed", OwnerId = admin.Id },
+                new Project { Name = "Onboarding", Description = "Sample project", OwnerId = admin.Id }
             );
 
             await db.SaveChangesAsync();

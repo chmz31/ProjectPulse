@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ProjectPulse.Api.Persistence;
 using ProjectPulse.Api.Domain;
 using ProjectPulse.Api.DTOs;
+using ProjectPulse.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 
 namespace ProjectPulse.Api.Controllers;
@@ -19,7 +20,9 @@ public class ProjectsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ProjectDto>>> Get([FromQuery] ProjectQueryDto q)
     {
-        var query = _db.Projects.AsNoTracking();
+        if (!User.TryGetUserId(out var userId)) return Unauthorized();
+
+        var query = _db.Projects.AsNoTracking().Where(p => p.OwnerId == userId);
 
         if (!string.IsNullOrWhiteSpace(q.Query))
             query = query.Where(p => p.Name.Contains(q.Query) || (p.Description ?? "").Contains(q.Query));
@@ -55,7 +58,10 @@ public class ProjectsController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProjectDto>> GetById(Guid id)
     {
-        var p = await _db.Projects.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        if (!User.TryGetUserId(out var userId)) return Unauthorized();
+
+        var p = await _db.Projects.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == userId);
         if (p is null) return NotFound();
 
         return new ProjectDto(p.Id, p.Name, p.Description, p.CreatedAt);
@@ -65,10 +71,13 @@ public class ProjectsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ProjectDto>> Create([FromBody] ProjectCreateDto dto)
     {
+        if (!User.TryGetUserId(out var userId)) return Unauthorized();
+
         var entity = new Project
         {
             Name = dto.Name,
-            Description = dto.Description
+            Description = dto.Description,
+            OwnerId = userId
         };
 
         _db.Projects.Add(entity);
@@ -82,7 +91,9 @@ public class ProjectsController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] ProjectUpdateDto dto)
     {
-        var p = await _db.Projects.FirstOrDefaultAsync(x => x.Id == id);
+        if (!User.TryGetUserId(out var userId)) return Unauthorized();
+
+        var p = await _db.Projects.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == userId);
         if (p is null) return NotFound();
 
         p.Name = dto.Name;
@@ -96,7 +107,9 @@ public class ProjectsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var p = await _db.Projects.FirstOrDefaultAsync(x => x.Id == id);
+        if (!User.TryGetUserId(out var userId)) return Unauthorized();
+
+        var p = await _db.Projects.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == userId);
         if (p is null) return NotFound();
 
         _db.Projects.Remove(p);

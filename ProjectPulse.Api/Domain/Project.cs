@@ -6,4 +6,6 @@ public class Project
     public string Name { get; set; } = default!;
     public string? Description { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public Guid OwnerId { get; set; }
+    public User Owner { get; set; } = default!;
 }
