@@ -107,6 +107,8 @@ With the default launch profile, the API listens on `http://localhost:5241`. Use
 http://localhost:5241/health
 ```
 
+In Development, CORS allows the local Vite frontend from `http://localhost:5173`, `http://127.0.0.1:5173`, `http://localhost:5174`, and `http://127.0.0.1:5174`.
+
 Swagger is available in Development at:
 
 ```text

@@ -115,9 +115,18 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
 builder.Services.AddCors(o =>
 {
     o.AddPolicy("frontend", p =>
-        p.WithOrigins("http://localhost:5173", "http://localhost:3000")
-         .AllowAnyHeader()
-         .AllowAnyMethod());
+    {
+        if (builder.Environment.IsDevelopment())
+        {
+            p.WithOrigins(
+                    "http://localhost:5173",
+                    "http://127.0.0.1:5173",
+                    "http://localhost:5174",
+                    "http://127.0.0.1:5174")
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+    });
 });
 
 // Persistence
