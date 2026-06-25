@@ -96,9 +96,12 @@ Generate a temporary development signing key and run the API.
 PowerShell:
 
 ```powershell
-$env:Jwt__Key = [Convert]::ToBase64String(
-  [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
-)
+$bytes = New-Object byte[] 32
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$env:Jwt__Key = [Convert]::ToBase64String($bytes)
+$rng.Dispose()
+
 dotnet run --project .\ProjectPulse.Api\ProjectPulse.Api.csproj
 ```
 
@@ -145,9 +148,12 @@ Generate a signing key in the host shell before starting a container.
 PowerShell:
 
 ```powershell
-$env:PROJECTPULSE_JWT_KEY = [Convert]::ToBase64String(
-  [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
-)
+$bytes = New-Object byte[] 32
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$env:PROJECTPULSE_JWT_KEY = [Convert]::ToBase64String($bytes)
+$rng.Dispose()
+
 $env:PROJECTPULSE_CONNECTION_STRING = "Data Source=/data/projectpulse.db"
 ```
 
