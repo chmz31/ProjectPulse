@@ -21,4 +21,16 @@ public sealed class StartupTests
 
         response.EnsureSuccessStatusCode();
     }
+
+    [Fact]
+    public async Task Health_ReturnsOk()
+    {
+        using var client = _factory.CreateClient();
+
+        using var response = await client.GetAsync("/health");
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("\"status\":\"ok\"", await response.Content.ReadAsStringAsync());
+    }
 }

@@ -189,6 +189,7 @@ if (enableSwagger)
 // Endpoints
 app.Map("/error", (HttpContext _) =>
     Results.Problem(title: "Unexpected error", statusCode: StatusCodes.Status500InternalServerError));
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapControllers();
 
 app.Run();

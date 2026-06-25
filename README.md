@@ -101,7 +101,13 @@ export Jwt__Key="$(openssl rand -base64 32)"
 dotnet run --project ./ProjectPulse.Api/ProjectPulse.Api.csproj
 ```
 
-With the default launch profile, the API listens on `http://localhost:5241`. Swagger is available in Development at:
+With the default launch profile, the API listens on `http://localhost:5241`. Use the unauthenticated health endpoint for a simple liveness check:
+
+```text
+http://localhost:5241/health
+```
+
+Swagger is available in Development at:
 
 ```text
 http://localhost:5241/swagger/index.html
@@ -161,7 +167,7 @@ Alternatively, Compose uses the same host signing-key variable:
 docker compose up --build
 ```
 
-The API is then available on `http://localhost:8080`; `/hello` is an unauthenticated smoke-check endpoint and Swagger is at `/swagger/index.html` for this local Compose configuration.
+The API is then available on `http://localhost:8080`; `/health` is the preferred unauthenticated liveness endpoint and Swagger is at `/swagger/index.html` for this local Compose configuration.
 
 The SQLite database is stored at `/data/projectpulse.db`. Mount `/data` to retain it when containers are replaced. This container setup is intended for local/demo evaluation; SQLite and automatic startup migrations are not designed here for horizontally scaled deployment.
 
@@ -207,6 +213,7 @@ The [`.NET CI` workflow](.github/workflows/dotnet-ci.yml) runs on pushes and pul
 | `POST` | `/auth/login` | No | Issue access and refresh tokens |
 | `POST` | `/auth/refresh` | No | Rotate a refresh token |
 | `POST` | `/auth/logout` | No | Revoke a refresh token |
+| `GET` | `/health` | No | Basic liveness check |
 | `GET` | `/users/me` | JWT | Return the current user claims |
 | `GET` | `/projects` | JWT | List the current user's projects |
 | `POST` | `/projects` | JWT | Create an owned project |
