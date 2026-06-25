@@ -35,6 +35,14 @@ The project is intentionally compact. It demonstrates production-minded security
 
 SQLite keeps local setup simple and makes the repository easy to evaluate. It is not intended here as a recommendation for a larger multi-instance production system.
 
+## Frontend
+
+ProjectPulse also has a companion React + TypeScript frontend:
+
+[ProjectPulse Web](https://github.com/chmz31/ProjectPulse.Web)
+
+The frontend provides authentication, persistent local sessions, and basic project CRUD using this API.
+
 ## Security model
 
 - JWT issuer, audience, and signing key are validated during startup.
